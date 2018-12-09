@@ -16,11 +16,27 @@ def check_brackets(code):
 
     if open_brackets != 0:
         raise Exception("the brackets are not closed")
-    print(open_brackets)
+
+def remove_comments(lines):
+
+    open_brackets = 0
+    
+    code_list = []
+    for line in lines:
+        l = ""
+        for char in line:
+            if char == "{":
+                open_brackets += 1
+            elif char == "}":
+                open_brackets -= 1
+            elif open_brackets == 0:
+                l += char
+
+        code_list.append(l)
+    return code_list
 
 # all possible token types. order determines priority.
 token_types = [
-    (r'{.*}', 'comment'),
     (r'program|var|integer|real|boolean|procedure|begin|end|if|then|else|while|do|not', 'reserved keyword'),
 
     (r':=', 'attribution'),
@@ -60,6 +76,9 @@ if __name__ == '__main__':
 
         # Verify with the comments are ok
         check_brackets("".join(lines))
+        
+        #remove comments
+        lines = remove_comments(lines)
 
         for line_num, line in enumerate(lines):
 
