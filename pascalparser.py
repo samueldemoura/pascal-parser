@@ -1,6 +1,23 @@
 import re
 import sys
 
+# counts the brackets and raises an Exception if something get wrong
+def check_brackets(code):
+
+    open_brackets = 0
+
+    for char in code:
+        if char == "{":
+            open_brackets += 1
+        elif char == "}":
+            open_brackets -= 1
+        elif open_brackets < 0:
+            raise Exception("Brackets Error")
+
+    if open_brackets != 0:
+        raise Exception("the brackets are not closed")
+    print(open_brackets)
+
 # all possible token types. order determines priority.
 token_types = [
     (r'{.*}', 'comment'),
@@ -38,7 +55,15 @@ if __name__ == '__main__':
     tokens = []
 
     with open(sys.argv[1], 'r') as file:
-        for line_num, line in enumerate(file.readlines()):
+        
+        lines = file.readlines()
+
+        # Verify with the comments are ok
+        check_brackets("".join(lines))
+
+        for line_num, line in enumerate(lines):
+
+
             # regex matches for this line:
             matches = []
 
