@@ -16,6 +16,9 @@ token_types = [
     (r'[0-9]+', 'integer'),
     (r'[0-9]+\.[0-9]*', 'real'),
     (r'[a-z]+[a-z0-9_]*', 'identifier'),
+
+    # if it doesn't fit into above regexes and it's not an ignorable character, raise exception
+    (r'[^ \n\r\t]+', 'raise_exception'),
     ]
 
 # concatenate all of the above into a giant generic match regex
@@ -52,7 +55,11 @@ if __name__ == '__main__':
                         token_type = token_regex[1]
                         break
 
-                if not token_type:
+                if token_type == 'comment':
+                    # ignore comments
+                    continue
+
+                if token_type == 'raise_exception':
                     # token without type: error!
                     raise Exception('`{}` could not be parsed.'.format(match.group(0)))
 
