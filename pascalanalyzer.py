@@ -32,6 +32,39 @@ def methodwrapper(func):
 
     return wrapper
 
+class Stack:
+    """An stack to manage the contexts"""
+    def __init__(self):
+        self.mark = ["@"]
+        self._stack = []
+
+    def new_context(self):
+        """Inserts a mark in the stack"""
+        self._stack.append(self.mark)
+
+    def create_id(self, id, type):
+        """Trys to create an id"""
+        for i in self._stack[::-1]:
+            if i[0] == self.mark:
+                break
+            if i[0] == id:
+                raise Exception("Variable already create at this context")
+        self._stack.append((id, type))
+
+    def search(self, id):
+        """Looks for a id"""
+        for i in self._stack[::-1]:
+            if i[0] == id:
+                return True
+        raise Exception("Identifier doesnt exist")
+
+
+    def context_out(self):
+        """Removes the context"""
+        self._stack.reverse()
+        self._stack[self._stack.index(self.mark)+1:]
+        self._stack.reverse()
+
 #
 # Analyzer
 #
@@ -40,6 +73,7 @@ class Analyzer:
     tokens = [] # Token list
     counter = 0 # "Current token" counter
     sym = None
+    context_stack = Stack()
 
     def parse_tokens_into_list(self, filename):
         '''Parse tokens from input CSV file to token list.'''
@@ -68,6 +102,7 @@ class Analyzer:
         '''Read first program token and fire off recursive calls.'''
         self.sym = self.get_next_token()
         if self.sym[TOKEN] == 'program':
+            self.context_stack.new_context()
             self.program()
         else:
             raise Exception(
@@ -83,7 +118,7 @@ class Analyzer:
         # Try to read program identifier
         self.sym = self.get_next_token()
         if self.sym[SYMBOL] == 'identifier':
-            pass # terminal (id)
+            self.context_stack.create_id(self.sym[TOKEN], "program_declaration") #TODO look for a right name
         else:
             raise Exception(
                 'Error parsing {} at line {}: missing program name identifier.' \
@@ -116,13 +151,17 @@ class Analyzer:
     @methodwrapper
     def list_of_var_declarations(self):
         # list_of_ids: type; list_of_var_declarations_l
-        self.list_of_ids()
+        list_ids = self.list_of_ids()
 
         if self.sym[TOKEN] != ':':
             raise Exception('Missing : at line {}'.format(self.sym[LINE]))
 
         self.sym = self.get_next_token()
+        aux_type = self.sym[TOKEN]
         self.type()
+
+        for i in list_ids:
+            self.context_stack.create_id(i, aux_type)
 
         if self.sym[TOKEN] != ';':
             raise Exception('Missing ; at line {}'.format(self.sym[LINE]))
@@ -135,7 +174,7 @@ class Analyzer:
     def list_of_var_declarations_l(self):
         # list_of_ids: type; list_of_var_declarations_l | <empty>
         try:
-            self.list_of_ids()
+            list_ids = self.list_of_ids()
         except BailoutException:
             # if there's not a list_of_ids here, it's optional anyways so bail out
             return
@@ -144,7 +183,11 @@ class Analyzer:
             raise Exception('Missing : at line {}'.format(self.sym[LINE]))
 
         self.sym = self.get_next_token()
+        aux_type = self.sym[TOKEN]
         self.type()
+
+        for i in list_ids:
+            self.context_stack.create_id(i, aux_type)
 
         if self.sym[TOKEN] != ';':
             raise Exception('Missing ; at line {}'.format(self.sym[LINE]))
@@ -153,12 +196,12 @@ class Analyzer:
         self.list_of_var_declarations_l()
 
 
-    @methodwrapper
     def list_of_ids(self):
         # id list_of_ids_l
         if self.sym[SYMBOL] == 'identifier':
+            aux = [self.sym[TOKEN]]
             self.sym = self.get_next_token()
-            self.list_of_ids_l()
+            return aux + self.list_of_ids_l()
         else:
             raise BailoutException(
                 'Expected an identifier but got {} at line {}' \
@@ -166,16 +209,16 @@ class Analyzer:
                 )
 
 
-    @methodwrapper
     def list_of_ids_l(self):
         # , id list_of_ids_l | <empty>
         if self.sym[TOKEN] != ',':
-            return # right-side production
+            return [] # right-side production
 
         self.sym = self.get_next_token()
         if self.sym[SYMBOL] == 'identifier':
+            aux = [self.sym[TOKEN]]
             self.sym = self.get_next_token()
-            self.list_of_ids_l()
+            return aux + self.list_of_ids_l()
 
 
     @methodwrapper
@@ -227,7 +270,10 @@ class Analyzer:
                 )
 
         self.sym = self.get_next_token()
-        if self.sym[SYMBOL] != 'identifier':
+        if self.sym[SYMBOL] == 'identifier':
+            self.context_stack.create_id(self.sym[TOKEN], 'proc')
+            self.context_stack.new_context()
+        else:
             raise Exception(
                 'Expected procedure identifier at line {}, got {} instead' \
                 .format(self.sym[LINE], self.sym[TOKEN])
@@ -246,6 +292,8 @@ class Analyzer:
         self.var_declarations()
         self.subprogram_declarations()
         self.compound_command()
+
+        self.context_stack.context_out()
 
 
     @methodwrapper
@@ -269,13 +317,18 @@ class Analyzer:
     @methodwrapper
     def list_of_parameters(self):
         # list_of_ids: type list_of_parameters_l
-        self.list_of_ids()
+        aux_ids = self.list_of_ids()
 
         if self.sym[TOKEN] != ':':
             raise Exception('Missing : at line {}'.format(self.sym[LINE]))
 
         self.sym = self.get_next_token()
+        aux_type = self.sym[TOKEN]
         self.type()
+
+        for id in aux_ids:
+            self.context_stack.create_id(id, aux_type)
+
         self.list_of_parameters_l()
 
 
@@ -283,16 +336,21 @@ class Analyzer:
     def list_of_parameters_l(self):
         # ; list_of_ids: type list_of_parameters_l | <empty>
         if self.sym[TOKEN] != ';':
-            return # multiple parameters are optional, bail out if there's no ;
+            return [] # multiple parameters are optional, bail out if there's no ;
 
         self.sym = self.get_next_token()
-        self.list_of_ids()
+        aux_ids = self.list_of_ids()
 
         if self.sym[TOKEN] != ':':
             raise Exception('Missing : at line {}'.format(self.sym[LINE]))
 
         self.sym = self.get_next_token()
+        aux_type = self.sym[TOKEN]
         self.type()
+
+        for id in aux_ids:
+           self.context_stack.create_id(id, aux_type)
+
         self.list_of_parameters_l()
 
 
@@ -307,8 +365,12 @@ class Analyzer:
                 .format(self.sym[LINE], self.sym[TOKEN])
                 )
 
+        self.context_stack.new_context()
+
         self.sym = self.get_next_token()
         self.optional_commands()
+
+        self.context_stack.context_out()
 
         if self.sym[TOKEN] != 'end':
             raise Exception(
@@ -427,6 +489,7 @@ class Analyzer:
         # id
         if self.sym[SYMBOL] != 'identifier':
             raise BailoutException
+        self.context_stack.search(self.sym[TOKEN])
         self.sym = self.get_next_token()
 
 
