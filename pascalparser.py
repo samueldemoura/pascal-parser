@@ -20,7 +20,7 @@ def check_brackets(code):
 def remove_comments(lines):
 
     open_brackets = 0
-    
+
     code_list = []
     for line in lines:
         l = ""
@@ -40,14 +40,17 @@ token_types = [
     (r'program|var|integer|real|boolean|procedure|begin|end|if|then|else|while|do|not', 'reserved keyword'),
 
     (r':=', 'attribution'),
-    (r'=|<|>|<=|>=|<>', 'comparison'),
-    (r';|\.|:|\(|\)|,', 'delimiter'),
+    (r'<=|>=|<>|=|<|>', 'comparison'),
+    (r';|:|\(|\)|,', 'delimiter'),
 
     (r'\+|-|or', 'additive operator'),
     (r'\*|/|and', 'multiplicative operator'),
 
-    (r'[0-9]+', 'integer'),
     (r'[0-9]+\.[0-9]*', 'real'),
+    (r'[0-9]+', 'integer'),
+
+    (r'\.', 'delimiter'),
+
     (r'[a-z]+[a-z0-9_]*', 'identifier'),
 
     # if it doesn't fit into above regexes and it's not an ignorable character, raise exception
@@ -71,12 +74,12 @@ if __name__ == '__main__':
     tokens = []
 
     with open(sys.argv[1], 'r') as file:
-        
+
         lines = file.readlines()
 
         # Verify with the comments are ok
         check_brackets("".join(lines))
-        
+
         #remove comments
         lines = remove_comments(lines)
 
@@ -112,4 +115,4 @@ if __name__ == '__main__':
     # print out table
     print('token,classification,line')
     for token in tokens:
-        print('{},{},{}'.format(token[0], token[1], token[2]))
+        print('{},{},{}'.format(token[0].replace(',', '","'), token[1], token[2]))
