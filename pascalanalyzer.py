@@ -12,7 +12,7 @@ class BailoutException(Exception):
     def __init__(self, message=None):
         super(BailoutException, self).__init__(message)
         if DEBUG:
-            print(' * Bailout raised: {}'.format(message))
+            print(' \x1b[1;36m* Bailout raised:\x1b[0m {}'.format(message))
 
 def methodwrapper(func):
     '''Function wrapper for debugging purposes.'''
@@ -22,14 +22,15 @@ def methodwrapper(func):
                 ' \x1b[1;31m* Calling\x1b[0m \x1b[1;33m{}\x1b[0m with sym = \x1b[1;34m{}\x1b[0m' \
                 .format(func.__name__, args[0].sym[TOKEN])
                 )
-            func(*args, **kwargs)
+            return_value = func(*args, **kwargs)
             print(
                 ' \x1b[1;32m* Leaving\x1b[0m \x1b[1;33m{}\x1b[0m with sym = \x1b[1;34m{}\x1b[0m' \
                 .format(func.__name__, args[0].sym[TOKEN])
                 )
+            return return_value
     else:
         def wrapper(*args, **kwargs):
-            func(*args, **kwargs)
+            return func(*args, **kwargs)
 
     return wrapper
 
@@ -200,6 +201,7 @@ class Analyzer:
         self.list_of_var_declarations_l()
 
 
+    @methodwrapper
     def list_of_ids(self):
         # id list_of_ids_l
         if self.sym[SYMBOL] == 'identifier':
@@ -213,6 +215,7 @@ class Analyzer:
                 )
 
 
+    @methodwrapper
     def list_of_ids_l(self):
         # , id list_of_ids_l | <empty>
         if self.sym[TOKEN] != ',':
@@ -525,7 +528,6 @@ class Analyzer:
 
     @methodwrapper
     def list_of_expressions_l(self):
-        # TODO: different from joseildo's version. investigate
         # ,expression list_of_expressions_l | <empty>
         if self.sym[TOKEN] == ',':
             self.expression()
