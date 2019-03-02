@@ -43,14 +43,18 @@ class ScopeStack:
         '''Inserts a scope marking in the stack.'''
         self._stack.append(self.mark)
 
-    def create_id(self, identifier, type):
+    def create_id(self, identifier, identifier_type):
         '''Tries to create an identifier.'''
         for i in self._stack[::-1]:
             if i[0] == self.mark:
                 break
             if i[0] == identifier:
-                raise Exception('Tried to redefine already existing identifier `{}`.'.format(identifier))
-        self._stack.append((identifier, type))
+                raise Exception(
+                    'Tried to redefine already existing identifier `{}`.' \
+                    .format(identifier)
+                    )
+
+        self._stack.append((identifier, identifier_type))
 
     def search(self, identifier):
         '''Looks for an identifier.'''
@@ -326,8 +330,8 @@ class Analyzer:
         aux_type = self.sym[TOKEN]
         self.type()
 
-        for id in aux_ids:
-            self.scope_stack.create_id(id, aux_type)
+        for identifier in aux_ids:
+            self.scope_stack.create_id(identifier, aux_type)
 
         self.list_of_parameters_l()
 
@@ -348,8 +352,8 @@ class Analyzer:
         aux_type = self.sym[TOKEN]
         self.type()
 
-        for id in aux_ids:
-           self.scope_stack.create_id(id, aux_type)
+        for identifier in aux_ids:
+           self.scope_stack.create_id(identifier, aux_type)
 
         self.list_of_parameters_l()
 
