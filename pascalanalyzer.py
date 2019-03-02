@@ -62,7 +62,7 @@ class ScopeStack:
     def end_scope(self):
         '''Leaves the current scope.'''
         self._stack.reverse()
-        self._stack[self._stack.index(self.mark)+1:]
+        self._stack = self._stack[self._stack.index(self.mark)+1:]
         self._stack.reverse()
 
 #
