@@ -70,6 +70,89 @@ class ScopeStack:
         self._stack = self._stack[self._stack.index(self.mark)+1:]
         self._stack.reverse()
 
+class TypeControlStack:
+    '''Stack class for type checking.'''
+    def __init__(self):
+        self._stack = []
+
+    #
+    # Basic stack manipulation operations
+    #
+    def push(self, id_type):
+        '''Pushes a type to the top of the stack.'''
+        self._stack.append(id_type)
+
+    def top(self):
+        '''Returns the top of the stack.'''
+        return self._stack[-1]
+
+    def subtop(self):
+        '''Returns the type below the top of the stack.'''
+        return self._stack[-2]
+
+    def update_top(self, id_type):
+        '''Pops out top 2 types and replaces them with new type.'''
+        self._stack.pop()
+        self._stack.pop()
+        self.push(id_type)
+
+    #
+    # Type control logic
+    #
+    def add_sub_or_mult_op(self):
+        # + | - | *
+        if self.top() == 'integer' and self.subtop() == 'integer':
+            self.update_top('integer')
+            return
+
+        if self.top() == 'real' and self.subtop() == 'real':
+            self.update_top('real')
+            return
+
+        if self.top() == 'integer' and self.subtop() == 'real':
+            self.update_top('real')
+            return
+
+        if self.top() == 'real' and self.subtop() == 'integer':
+            self.update_top('real')
+            return
+
+        raise Exception(
+            'Incompatible types for operation: {} and {}'.format(self.top(), self.subtop())
+            )
+
+    def div(self):
+        # /
+        if self.top() == 'integer' and self.subtop() == 'integer':
+            self.update_top('real')
+            return
+
+        if self.top() == 'real' and self.subtop() == 'real':
+            self.update_top('real')
+            return
+
+        if self.top() == 'integer' and self.subtop() == 'real':
+            self.update_top('real')
+            return
+
+        if self.top() == 'real' and self.subtop() == 'integer':
+            self.update_top('real')
+            return
+
+        raise Exception(
+            'Incompatible types for operation: {} and {}'.format(self.top(), self.subtop())
+            )
+
+    def logical_op(self):
+        # and | or | true | false
+        if self.top() == 'boolean' and self.subtop() == 'boolean':
+            self.update_top('boolean')
+        else:
+            raise Exception(
+                'Incompatible types for logical operation: {} and {}' \
+                .format(self.top(), self.subtop())
+            )
+
 #
 # Analyzer
 #
@@ -79,6 +162,7 @@ class Analyzer:
     counter = 0 # "Current token" counter
     sym = None
     scope_stack = ScopeStack()
+    type_stack = TypeControlStack()
 
     def parse_tokens_into_list(self, filename):
         '''Parse tokens from input CSV file to token list.'''
@@ -123,7 +207,7 @@ class Analyzer:
         # Try to read program identifier
         self.sym = self.get_next_token()
         if self.sym[SYMBOL] == 'identifier':
-            self.scope_stack.create_id(self.sym[TOKEN], 'program_declaration') #TODO look for a right name
+            self.scope_stack.create_id(self.sym[TOKEN], 'program_declaration')
         else:
             raise Exception(
                 'Error parsing {} at line {}: missing program name identifier.' \
