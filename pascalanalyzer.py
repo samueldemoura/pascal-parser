@@ -61,7 +61,7 @@ class ScopeStack:
         '''Looks for an identifier.'''
         for i in self._stack[::-1]:
             if i[0] == identifier:
-                return True
+                return i[1]
         raise Exception('Identifier `{}` was used before declaration.'.format(identifier))
 
     def end_scope(self):
@@ -74,6 +74,22 @@ class TypeControlStack:
     '''Stack class for type checking.'''
     def __init__(self):
         self._stack = []
+        self.precedence = {
+            'not': (4, self.not_op),
+            'and': (3, self.logical_op),
+            'or': (3, self.logical_op),
+            '*': (3, self.add_sub_or_mult_op),
+            '/': (3, self.div_op),
+            '+': (2, self.add_sub_or_mult_op),
+            '-': (2, self.add_sub_or_mult_op),
+            '<=': (1, self.relational_op),
+            '>=': (1, self.relational_op),
+            '<>': (1, self.relational_op),
+            '=': (1, self.relational_op),
+            '<': (1, self.relational_op),
+            '>': (1, self.relational_op),
+            ':=': (0, self.attribution)
+        }
 
     #
     # Basic stack manipulation operations
@@ -95,6 +111,52 @@ class TypeControlStack:
         self._stack.pop()
         self._stack.pop()
         self.push(id_type)
+
+    def evaluate(self):
+        '''Converts stack to postfix notation and evalutes to check if types are compatible.'''
+        out = self.to_postfix()
+        self._stack = []
+
+        for element in out:
+            # Check for operator and operate top two operands
+            if element in self.precedence:
+                self.precedence[element][1]()
+            else:
+                # Found operand, push to stack.
+                self.push(element)
+
+    #
+    # Conversion to postfix notation
+    #
+    def to_postfix(self):
+        '''Creates new stack from current, in postfix notation.'''
+        out = []
+
+        def isnt_higher_precedence(a, b):
+            try:
+                return True if self.precedence[a][0] <= self.precedence[b][0] else False
+            except KeyError:
+                return False
+
+        for element in self._stack:
+            if element == ')':
+                # Pop from stack into output until the matching ( is found
+                while self.subtop() != '(':
+                    out.append(self._stack.pop())
+                self._stack.pop() # Throw out remainder (
+                continue
+
+            if element in self.precedence:
+                # Found an operator.
+                while self._stack and isnt_higher_precedence(element, self.top()):
+                    out.append(self._stack.pop())
+                self._stack.append(element)
+                continue
+
+            # Doesn't fall into any of the above. Send directly to output.
+            out.append(element)
+
+        return out
 
     #
     # Type control logic
@@ -121,7 +183,7 @@ class TypeControlStack:
             'Incompatible types for operation: {} and {}'.format(self.top(), self.subtop())
             )
 
-    def div(self):
+    def div_op(self):
         # /
         if self.top() == 'integer' and self.subtop() == 'integer':
             self.update_top('real')
@@ -144,7 +206,7 @@ class TypeControlStack:
             )
 
     def logical_op(self):
-        # and | or | true | false
+        # and | or
         if self.top() == 'boolean' and self.subtop() == 'boolean':
             self.update_top('boolean')
         else:
@@ -152,6 +214,50 @@ class TypeControlStack:
                 'Incompatible types for logical operation: {} and {}' \
                 .format(self.top(), self.subtop())
             )
+
+    def relational_op(self):
+        # <= | >= | <> | = | < | >
+        if self.top() == 'integer' and self.subtop() == 'integer':
+            self.update_top('boolean')
+            return
+
+        if self.top() == 'real' and self.subtop() == 'real':
+            self.update_top('boolean')
+            return
+
+        if self.top() == 'integer' and self.subtop() == 'real':
+            self.update_top('boolean')
+            return
+
+        if self.top() == 'real' and self.subtop() == 'integer':
+            self.update_top('boolean')
+            return
+
+        raise Exception(
+            'Incompatible types for operation: {} and {}'.format(self.top(), self.subtop())
+            )
+
+    def attribution(self):
+        # :=
+        if self.top() == self.subtop():
+            # Attribution does not return a new type, just pop
+            self._stack.pop()
+            self._stack.pop()
+        else:
+            raise Exception(
+                'Incompatible types for attribution: {} and {}' \
+                .format(self.top(), self.subtop())
+            )
+
+    def not_op(self):
+        # not
+        if self.top() == 'boolean':
+            pass # `not` operator still leaves a boolean
+        else:
+            raise Exception(
+                'Incompatible types for not operation: {}' \
+                .format(self.top())
+                )
 
 #
 # Analyzer
@@ -510,8 +616,12 @@ class Analyzer:
             # variable := expression
             self.variable()
             if self.sym[TOKEN] == ':=':
+                self.type_stack.push(self.sym[TOKEN]) # push :=
                 self.sym = self.get_next_token()
                 self.expression()
+
+                # Leaving attribution, evaluate to make sure types are compatible
+                self.type_stack.evaluate()
                 return
             raise BailoutException # got an identifier but not a :=
         except BailoutException:
@@ -580,7 +690,12 @@ class Analyzer:
         # id
         if self.sym[SYMBOL] != 'identifier':
             raise BailoutException
-        self.scope_stack.search(self.sym[TOKEN])
+
+        # Push the type of this identifier (if it exists) into type control stack
+        self.type_stack.push(
+            self.scope_stack.search(self.sym[TOKEN])
+            )
+
         self.sym = self.get_next_token()
 
 
@@ -626,9 +741,15 @@ class Analyzer:
         try:
             self.relational_op()
         except BailoutException:
+            # Leaving simple_expression without matching right-hand production,
+            # evaluate to make sure types are compatible
+            self.type_stack.evaluate()
             return # did not match right side of production
 
         self.simple_expression() # TODO: catch and raise new exception here?
+
+        # Leaving expression, evaluate to make sure types are compatible
+        self.type_stack.evaluate()
 
 
     @methodwrapper
@@ -701,9 +822,11 @@ class Analyzer:
             self.sym = self.get_next_token()
             if self.sym[TOKEN] == '(':
                 # second production
+                self.type_stack.push(self.sym[TOKEN]) # push (
                 self.list_of_expressions()
                 if self.sym[TOKEN] != ')':
                     raise Exception('Unclosed parenthesis at line {}.'.format(self.sym[LINE]))
+                self.type_stack.push(self.sym[TOKEN]) # push )
                 return
             return
 
@@ -713,19 +836,23 @@ class Analyzer:
         except BailoutException:
             # fifth & sixth productions
             if self.sym[TOKEN] in ['true', 'false']:
+                self.type_stack.push('boolean')
                 self.sym = self.get_next_token()
                 return
 
             # seventh
             if self.sym[TOKEN] == '(':
+                self.type_stack.push(self.sym[TOKEN]) # push (
                 self.sym = self.get_next_token()
                 self.expression()
                 if self.sym[TOKEN] != ')':
                     raise Exception('Unclosed parenthesis at line {}.'.format(self.sym[LINE]))
+                self.type_stack.push(self.sym[TOKEN]) # push )
                 self.sym = self.get_next_token()
             else:
                 # eight
                 if self.sym[TOKEN] == 'not':
+                    self.type_stack.push(self.sym[TOKEN]) # push `not`
                     self.sym = self.get_next_token()
                     self.factor()
                 else:
@@ -737,12 +864,14 @@ class Analyzer:
 
     @methodwrapper
     def type_num(self):
-        # integer | real | boolean
+        # integer | real
         if self.sym[SYMBOL] not in ['integer', 'real']:
             raise BailoutException(
                 '{} is not a valid type at line {}, expected a number.' \
                 .format(self.sym[TOKEN], self.sym[LINE])
                 )
+
+        self.type_stack.push(self.sym[SYMBOL])
         self.sym = self.get_next_token()
 
 
@@ -759,6 +888,8 @@ class Analyzer:
         # = | < | > | <= | >= | <>
         if self.sym[TOKEN] not in ['=', '<', '>', '<=', '>=', '<>']:
             raise BailoutException
+
+        self.type_stack.push(self.sym[TOKEN])
         self.sym = self.get_next_token()
 
 
@@ -767,6 +898,8 @@ class Analyzer:
         # + | - | or
         if self.sym[TOKEN] not in ['+', '-', 'or']:
             raise BailoutException
+
+        self.type_stack.push(self.sym[TOKEN])
         self.sym = self.get_next_token()
 
 
@@ -775,6 +908,8 @@ class Analyzer:
         # * | / | and
         if self.sym[TOKEN] not in ['*', '/', 'and']:
             raise BailoutException
+
+        self.type_stack.push(self.sym[TOKEN])
         self.sym = self.get_next_token()
 
 
