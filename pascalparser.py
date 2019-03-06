@@ -37,7 +37,7 @@ def remove_comments(lines):
 
 # all possible token types. order determines priority.
 token_types = [
-    (r'program|var|integer|real|boolean|procedure|begin|end|if|then|else|while|do|not', 'reserved keyword'),
+    (r'program|var|integer|real|boolean|procedure|begin|end|if|then|else|while|do|not|true|false', 'reserved keyword'),
 
     (r':=', 'attribution'),
     (r'<=|>=|<>|=|<|>', 'comparison'),
