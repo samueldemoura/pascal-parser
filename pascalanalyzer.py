@@ -112,8 +112,14 @@ class TypeControlStack:
         self._stack.pop()
         self.push(id_type)
 
-    def evaluate(self):
+    def evaluate(self, evaluate_attribution=False):
         '''Converts stack to postfix notation and evalutes to check if types are compatible.'''
+
+        # If we're not evaluating an attribution, remove it from the stack temporarily. (sorry :^)
+        if not evaluate_attribution:
+            backup = self._stack.copy()
+            self._stack = self._stack[self._stack.index(':=') + 1:]
+
         out = self.to_postfix()
         self._stack = []
 
@@ -125,12 +131,17 @@ class TypeControlStack:
                 # Found operand, push to stack.
                 self.push(element)
 
+        if not evaluate_attribution:
+            self._stack = backup
+
     #
     # Conversion to postfix notation
     #
     def to_postfix(self):
         '''Creates new stack from current, in postfix notation.'''
         out = []
+        original_expression = self._stack.copy()
+        self._stack = []
 
         def isnt_higher_precedence(a, b):
             try:
@@ -138,10 +149,14 @@ class TypeControlStack:
             except KeyError:
                 return False
 
-        for element in self._stack:
+        for element in original_expression:
+            if element == '(':
+                self._stack.append('(')
+                continue
+
             if element == ')':
                 # Pop from stack into output until the matching ( is found
-                while self.subtop() != '(':
+                while self.top() != '(':
                     out.append(self._stack.pop())
                 self._stack.pop() # Throw out remainder (
                 continue
@@ -155,6 +170,12 @@ class TypeControlStack:
 
             # Doesn't fall into any of the above. Send directly to output.
             out.append(element)
+
+        # Pop leftover operators
+        while self._stack:
+            out.append(self._stack.pop())
+
+        self._stack = original_expression
 
         return out
 
@@ -621,7 +642,7 @@ class Analyzer:
                 self.expression()
 
                 # Leaving attribution, evaluate to make sure types are compatible
-                self.type_stack.evaluate()
+                self.type_stack.evaluate(evaluate_attribution=True)
                 return
             raise BailoutException # got an identifier but not a :=
         except BailoutException:
@@ -741,15 +762,9 @@ class Analyzer:
         try:
             self.relational_op()
         except BailoutException:
-            # Leaving simple_expression without matching right-hand production,
-            # evaluate to make sure types are compatible
-            self.type_stack.evaluate()
             return # did not match right side of production
 
         self.simple_expression() # TODO: catch and raise new exception here?
-
-        # Leaving expression, evaluate to make sure types are compatible
-        self.type_stack.evaluate()
 
 
     @methodwrapper
@@ -819,6 +834,12 @@ class Analyzer:
         # not factor
         if self.sym[SYMBOL] == 'identifier':
             # first production
+
+            # Push the type of this identifier (if it exists) into type control stack
+            self.type_stack.push(
+                self.scope_stack.search(self.sym[TOKEN])
+                )
+
             self.sym = self.get_next_token()
             if self.sym[TOKEN] == '(':
                 # second production
@@ -827,6 +848,12 @@ class Analyzer:
                 if self.sym[TOKEN] != ')':
                     raise Exception('Unclosed parenthesis at line {}.'.format(self.sym[LINE]))
                 self.type_stack.push(self.sym[TOKEN]) # push )
+
+                # Leaving expression, evaluate to make sure types are compatible
+                # TODO: does this need to be here?
+                print('Evaluating after id(list_of_expressions)...')
+                self.type_stack.evaluate()
+
                 return
             return
 
@@ -848,6 +875,10 @@ class Analyzer:
                 if self.sym[TOKEN] != ')':
                     raise Exception('Unclosed parenthesis at line {}.'.format(self.sym[LINE]))
                 self.type_stack.push(self.sym[TOKEN]) # push )
+
+                # Leaving expression, evaluate to make sure types are compatible
+                self.type_stack.evaluate()
+
                 self.sym = self.get_next_token()
             else:
                 # eight
